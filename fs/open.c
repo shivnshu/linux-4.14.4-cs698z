@@ -1048,27 +1048,27 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 
 	tmp = getname(filename);
 	/////////// CS698Z-Class-ex1.1 //////////
-  char home[] = "/home/";
-  char rel_name[1000]; 
-  int i, c=0;
-  strncpy(rel_name, tmp->name, 1000);
-  char *ptr_substr = strstr(rel_name, home);
-  if(ptr_substr != NULL && strnlen(ptr_substr, 1000) == strnlen(rel_name, 1000)){
-    for(i=0;i<strlen(ptr_substr);++i){
-      if(rel_name[i] == '/'){
-        c++;
-      }
-      if(c==3){
-        printk("%s", (rel_name+i+1));
-        break;
-      }
-    }
-  }
-  else {
-    char rel_path_nomatching[1000] = "../..";
-    strncat(rel_path_nomatching, rel_name, 1000);
-    printk("%s", rel_path_nomatching);
-  }
+  /*char home[] = "/home/";*/
+  /*char rel_name[1000]; */
+  /*int i, c=0;*/
+  /*strncpy(rel_name, tmp->name, 1000);*/
+  /*char *ptr_substr = strstr(rel_name, home);*/
+  /*if(ptr_substr != NULL && strnlen(ptr_substr, 1000) == strnlen(rel_name, 1000)){*/
+    /*for(i=0;i<strlen(ptr_substr);++i){*/
+      /*if(rel_name[i] == '/'){*/
+        /*c++;*/
+      /*}*/
+      /*if(c==3){*/
+        /*printk("%s", (rel_name+i+1));*/
+        /*break;*/
+      /*}*/
+    /*}*/
+  /*}*/
+  /*else {*/
+    /*char rel_path_nomatching[1000] = "../..";*/
+    /*strncat(rel_path_nomatching, rel_name, 1000);*/
+    /*printk("%s", rel_path_nomatching);*/
+  /*}*/
 	//////////////////////////////////////////
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
