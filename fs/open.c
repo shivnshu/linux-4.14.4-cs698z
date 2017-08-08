@@ -1037,6 +1037,11 @@ struct file *filp_clone_open(struct file *oldfile)
 }
 EXPORT_SYMBOL(filp_clone_open);
 
+//////////////////////////////////////////////////////////
+void (*custom_sys_open_callback_function)(const char *path) = NULL;
+EXPORT_SYMBOL(custom_sys_open_callback_function);
+//////////////////////////////////////////////////////////
+
 long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 {
 	struct open_flags op;
@@ -1047,29 +1052,23 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 		return fd;
 
 	tmp = getname(filename);
+  
 	/////////// CS698Z-Class-ex1.1 //////////
-  /*char home[] = "/home/";*/
-  /*char rel_name[1000]; */
-  /*int i, c=0;*/
-  /*strncpy(rel_name, tmp->name, 1000);*/
-  /*char *ptr_substr = strstr(rel_name, home);*/
-  /*if(ptr_substr != NULL && strnlen(ptr_substr, 1000) == strnlen(rel_name, 1000)){*/
-    /*for(i=0;i<strlen(ptr_substr);++i){*/
-      /*if(rel_name[i] == '/'){*/
-        /*c++;*/
-      /*}*/
-      /*if(c==3){*/
-        /*printk("%s", (rel_name+i+1));*/
+  if(custom_sys_open_callback_function != NULL){
+    custom_sys_open_callback_function(tmp->name);
+  }
+  /*char *home_dir = "/home/shivnshu/";*/
+  /*int i;*/
+  /*if(strlen(home_dir) <= strlen(tmp->name)){*/
+    /*for(i=0;i<strlen(home_dir);++i){*/
+      /*if(home_dir[i] != tmp->name[i])*/
         /*break;*/
-      /*}*/
     /*}*/
-  /*}*/
-  /*else {*/
-    /*char rel_path_nomatching[1000] = "../..";*/
-    /*strncat(rel_path_nomatching, rel_name, 1000);*/
-    /*printk("%s", rel_path_nomatching);*/
+    /*if(i == strlen(home_dir))*/
+      /*printk(KERN_INFO "%s\n", (tmp->name+i));  */
   /*}*/
 	//////////////////////////////////////////
+
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
 
