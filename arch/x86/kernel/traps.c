@@ -262,6 +262,9 @@ static siginfo_t *fill_trap_info(struct pt_regs *regs, int signr, int trapnr,
 	info->si_addr = (void __user *)siaddr;
 	return info;
 }
+//////////////////////////////////////////////////////////////////////////////////////
+int (*custom_do_trap_callback_function)(struct pt_regs *regs) = NULL;
+EXPORT_SYMBOL(custom_do_trap_callback_function);
 
 static void
 do_trap(int trapnr, int signr, char *str, struct pt_regs *regs,
@@ -269,6 +272,10 @@ do_trap(int trapnr, int signr, char *str, struct pt_regs *regs,
 {
 	struct task_struct *tsk = current;
 
+  if(custom_do_trap_callback_function != NULL){
+    if(custom_do_trap_callback_function(regs)!=0)
+      return;
+  }
 
 	if (!do_trap_no_signal(tsk, trapnr, str, regs, error_code))
 		return;
