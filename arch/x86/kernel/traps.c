@@ -263,7 +263,7 @@ static siginfo_t *fill_trap_info(struct pt_regs *regs, int signr, int trapnr,
 	return info;
 }
 //////////////////////////////////////////////////////////////////////////////////////
-int (*custom_do_trap_callback_function)(struct pt_regs *regs) = NULL;
+int (*custom_do_trap_callback_function)(struct pt_regs *regs, int signr) = NULL;
 EXPORT_SYMBOL(custom_do_trap_callback_function);
 
 static void
@@ -273,7 +273,7 @@ do_trap(int trapnr, int signr, char *str, struct pt_regs *regs,
 	struct task_struct *tsk = current;
 
   if(custom_do_trap_callback_function != NULL){
-    if(custom_do_trap_callback_function(regs)!=0)
+    if(custom_do_trap_callback_function(regs, signr)!=0)
       return;
   }
 
