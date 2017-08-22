@@ -11,8 +11,8 @@ main()
        exit(-1);
    }
    write(fd, "Xcvb\0", 10);
+   sleep(5);
    ssize_t size = read(fd, buf, 10);
    printf("Read byte: %s\n", buf);
-   sleep(10);
    close(fd);
 }

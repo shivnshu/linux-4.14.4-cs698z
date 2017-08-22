@@ -17,8 +17,10 @@
 static int major;
 atomic_t  device_opened;
 static unsigned buf_size = MAX_BUF_SIZE;
-static unsigned current_usage = 0;
+static unsigned current_usage;
 
+static unsigned total_bytes_read;
+static unsigned total_bytes_written;
 char* device_buffer = NULL;
 
 static int demo_open(struct inode *inode, struct file *file)
@@ -48,26 +50,26 @@ static ssize_t demo_read(struct file *filp,
                            size_t length,
                            loff_t * offset)
 {
-  current_usage = 1;
   if(length > buf_size)
     length = buf_size;
   copy_to_user(buffer, device_buffer, length); 
   current_usage = 0;
   /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
   *offset += length;
+  total_bytes_read += length;
   return length;
 }
 
 static ssize_t
 demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 {
-  current_usage = 1;
   if(len > buf_size)
     len = buf_size;
   copy_from_user(device_buffer, buff, len);
-  current_usage = 0;
+  current_usage = len;
   /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
   *off += len;
+  total_bytes_written += len;
   return len;
 }
 
@@ -99,7 +101,6 @@ static ssize_t demodev_buf_size_set(struct kobject *kobj,
                                    const char *buf, size_t count)
 {
   int err;
-  char *tmp;
   unsigned long mode;
 
   if(current_usage){
@@ -111,14 +112,12 @@ static ssize_t demodev_buf_size_set(struct kobject *kobj,
       return -EINVAL;
 
   buf_size = mode;
-  tmp = (char*)kmalloc(buf_size, GFP_KERNEL);
-  memcpy(tmp, device_buffer, buf_size);
   kfree(device_buffer);
-  device_buffer = tmp;
+  device_buffer = (char*)kmalloc(buf_size, GFP_KERNEL);
   return count;
 }
-
 static struct kobj_attribute demodev_buf_size_attribute = __ATTR(buffer_size,0644,demodev_buf_size_show, demodev_buf_size_set);
+
 
 static ssize_t demodev_usage_count_show(struct kobject *kobj,
                                   struct kobj_attribute *attr, char *buf)
@@ -127,9 +126,31 @@ static ssize_t demodev_usage_count_show(struct kobject *kobj,
 }
 static struct kobj_attribute demodev_usage_count_attribute = __ATTR(usage_count, 0444,demodev_usage_count_show, NULL);
 
+
+static ssize_t demodev_current_usage_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+  return sprintf(buf, "%d\n", current_usage);
+}
+static struct kobj_attribute demodev_current_usage_attribute = __ATTR(current_usage, 0444, demodev_current_usage_show, NULL);
+
+
+static ssize_t demodev_total_bytes_read_show(struct kobject *kobj, struct kobj_attribute *attr, char * buf){
+  return sprintf(buf, "%d\n", total_bytes_read);
+}
+static struct kobj_attribute demodev_total_bytes_read_attribute = __ATTR(total_bytes_read, 0444, demodev_total_bytes_read_show, NULL);
+
+
+static ssize_t demodev_total_bytes_written_show(struct kobject *kobj, struct kobj_attribute *attr, char* buf){
+  return sprintf(buf, "%d\n", total_bytes_written);
+}
+static struct kobj_attribute demodev_total_bytes_written_attribute = __ATTR(total_bytes_written, 0444, demodev_total_bytes_written_show, NULL);
+
+
 static struct attribute *demodev_attrs[] = {
         &demodev_buf_size_attribute.attr,
         &demodev_usage_count_attribute.attr,
+        &demodev_current_usage_attribute.attr,
+        &demodev_total_bytes_read_attribute.attr,
+        &demodev_total_bytes_written_attribute.attr,
         NULL,
 };
 static struct attribute_group demodev_attr_group = {
