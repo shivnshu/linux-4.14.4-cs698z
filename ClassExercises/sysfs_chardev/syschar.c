@@ -19,20 +19,27 @@ atomic_t  device_opened;
 static unsigned buf_size = MAX_BUF_SIZE;
 static unsigned current_usage = 0;
 
-static char msg[MAX_BUF_SIZE] = {0};
+char* device_buffer = NULL;
 
 static int demo_open(struct inode *inode, struct file *file)
 {
-        atomic_inc(&device_opened);
-        try_module_get(THIS_MODULE);
-        printk(KERN_INFO "Device opened successfully\n");
-        return 0;
+  if(atomic_read(&device_opened)){
+    printk(KERN_INFO "Only one process is allowed to open!!\n");
+    return -EINVAL;
+  }
+  atomic_inc(&device_opened);
+  device_buffer = (char*)kmalloc(MAX_BUF_SIZE, GFP_KERNEL);
+  memset(device_buffer, 0, MAX_BUF_SIZE);
+  try_module_get(THIS_MODULE);
+  printk(KERN_INFO "Device opened successfully\n");
+  return 0;
 }
 
 static int demo_release(struct inode *inode, struct file *file)
 {
         atomic_dec(&device_opened);
         module_put(THIS_MODULE);
+        kfree(device_buffer);
         printk(KERN_INFO "Device closed successfully\n");
         return 0;
 }
@@ -41,29 +48,27 @@ static ssize_t demo_read(struct file *filp,
                            size_t length,
                            loff_t * offset)
 {
-  if(current_usage){
-    printk("Only one device allowed to read!!\n");
-    return -EINVAL; 
-  }
   current_usage = 1;
-  copy_to_user(buffer, msg, buf_size); 
+  if(length > buf_size)
+    length = buf_size;
+  copy_to_user(buffer, device_buffer, length); 
   current_usage = 0;
   /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
-  return buf_size;
+  *offset += length;
+  return length;
 }
 
 static ssize_t
 demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 {
-  if(current_usage){
-    printk("Only one device is allowed to write!!\n");
-    return -EINVAL;
-  }
   current_usage = 1;
-  copy_from_user(msg, buff, buf_size);
+  if(len > buf_size)
+    len = buf_size;
+  copy_from_user(device_buffer, buff, len);
   current_usage = 0;
   /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
-  return buf_size;
+  *off += len;
+  return len;
 }
 
 static long demo_ioctl(struct file *file,
@@ -93,19 +98,24 @@ static ssize_t demodev_buf_size_set(struct kobject *kobj,
                                    struct kobj_attribute *attr,
                                    const char *buf, size_t count)
 {
-        int err;
-        unsigned long mode;
+  int err;
+  char *tmp;
+  unsigned long mode;
 
-        if(current_usage){
-            printk(KERN_INFO "Can not change size while buf being used\n");
-            return -EINVAL;
-        }
-        err = kstrtoul(buf, 10, &mode);
-        if (err || mode < 0 || mode > MAX_BUF_SIZE )
-                return -EINVAL;
+  if(current_usage){
+      printk(KERN_INFO "Can not change size while buf being used\n");
+      return -EINVAL;
+  }
+  err = kstrtoul(buf, 10, &mode);
+  if (err || mode < 0 || mode > MAX_BUF_SIZE )
+      return -EINVAL;
 
-        buf_size = mode;
-        return count;
+  buf_size = mode;
+  tmp = (char*)kmalloc(buf_size, GFP_KERNEL);
+  memcpy(tmp, device_buffer, buf_size);
+  kfree(device_buffer);
+  device_buffer = tmp;
+  return count;
 }
 
 static struct kobj_attribute demodev_buf_size_attribute = __ATTR(buffer_size,0644,demodev_buf_size_show, demodev_buf_size_set);

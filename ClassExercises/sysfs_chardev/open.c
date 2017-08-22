@@ -10,7 +10,7 @@ main()
        perror("open");
        exit(-1);
    }
-   write(fd, "Xabc", 10);
+   write(fd, "Xcvb\0", 10);
    ssize_t size = read(fd, buf, 10);
    printf("Read byte: %s\n", buf);
    sleep(10);
