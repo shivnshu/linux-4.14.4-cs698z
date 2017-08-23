@@ -10,6 +10,7 @@
 #include<linux/fs_struct.h>
 #include<linux/uaccess.h>
 #include<linux/slab.h>
+#include<linux/mutex.h>
 
 #define MAX_BUF_SIZE 8192
 #define DEVNAME "demo"
@@ -23,15 +24,15 @@ static unsigned total_bytes_read;
 static unsigned total_bytes_written;
 char* device_buffer = NULL;
 
+struct mutex dev_mutex;
+
 static int demo_open(struct inode *inode, struct file *file)
 {
-  if(atomic_read(&device_opened)){
-    printk(KERN_INFO "Only one process is allowed to open!!\n");
-    return -EINVAL;
-  }
+  /*if(atomic_read(&device_opened)){*/
+    /*printk(KERN_INFO "Only one process is allowed to open!!\n");*/
+    /*return -EINVAL;*/
+  /*}*/
   atomic_inc(&device_opened);
-  device_buffer = (char*)kmalloc(MAX_BUF_SIZE, GFP_KERNEL);
-  memset(device_buffer, 0, MAX_BUF_SIZE);
   try_module_get(THIS_MODULE);
   printk(KERN_INFO "Device opened successfully\n");
   return 0;
@@ -41,7 +42,6 @@ static int demo_release(struct inode *inode, struct file *file)
 {
         atomic_dec(&device_opened);
         module_put(THIS_MODULE);
-        kfree(device_buffer);
         printk(KERN_INFO "Device closed successfully\n");
         return 0;
 }
@@ -50,9 +50,12 @@ static ssize_t demo_read(struct file *filp,
                            size_t length,
                            loff_t * offset)
 {
-  if(length > buf_size)
-    length = buf_size;
+  if(length > current_usage)
+    length = current_usage;
+  mutex_lock_interruptible(&dev_mutex);
+  printk(KERN_INFO "Read!\n");
   copy_to_user(buffer, device_buffer, length); 
+  mutex_unlock(&dev_mutex);
   current_usage = 0;
   /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
   *offset += length;
@@ -65,7 +68,10 @@ demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 {
   if(len > buf_size)
     len = buf_size;
+  mutex_lock_interruptible(&dev_mutex);
+  printk(KERN_INFO "Write!\n");
   copy_from_user(device_buffer, buff, len);
+  mutex_unlock(&dev_mutex);
   current_usage = len;
   /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
   *off += len;
@@ -177,6 +183,9 @@ int init_module(void)
    if(unlikely(ret))
           printk(KERN_INFO "demodev: can't create sysfs\n");
  
+  mutex_init(&dev_mutex);
+  device_buffer = (char*)kmalloc(MAX_BUF_SIZE, GFP_KERNEL);
+  memset(device_buffer, 0, MAX_BUF_SIZE);
 	return 0;
 }
 
@@ -184,6 +193,7 @@ void cleanup_module(void)
 {
   unregister_chrdev(major, DEVNAME);
   sysfs_remove_group (kernel_kobj, &demodev_attr_group);
+  kfree(device_buffer);
 	printk(KERN_INFO "Goodbye kernel\n");
 }
 MODULE_AUTHOR("deba@cse.iitk.ac.in");

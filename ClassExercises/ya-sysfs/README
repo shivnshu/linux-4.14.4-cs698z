@@ -1,0 +1,10 @@
+Creates the following sysfs entries.
+
+/sys/kernel/
+          |
+          |-----demodev
+                       |--buffer_size
+                       |--usage_count
+                       |--level1
+                                |--buffer_size
+                                |--usage_count

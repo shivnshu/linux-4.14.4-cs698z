@@ -4,7 +4,7 @@
 
 main()
 {
-   char buf[10];
+   char buf[10] = {0};
    int fd = open("/dev/demo",O_RDWR);
    if(fd < 0){
        perror("open");
@@ -13,6 +13,6 @@ main()
    write(fd, "Xcvb\0", 10);
    sleep(5);
    ssize_t size = read(fd, buf, 10);
-   printf("Read byte: %s\n", buf);
+   printf("Read: %s\n", buf);
    close(fd);
 }
