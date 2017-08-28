@@ -1,7 +1,7 @@
 VERSION = 4
 PATCHLEVEL = 12
 SUBLEVEL = 4
-EXTRAVERSION = -Shivanshu_Singh
+EXTRAVERSION = -ShivanshuSingh
 NAME = Fearless Coyote
 
 # *DOCUMENTATION*
