@@ -20,6 +20,9 @@ atomic_t  device_opened;
 static unsigned buf_size = MAX_BUF_SIZE;
 static unsigned current_usage;
 
+struct kobject *demodev_kobj;
+struct kobject *subdir_kobj;
+
 static unsigned total_bytes_read;
 static unsigned total_bytes_written;
 char* device_buffer = NULL;
@@ -35,6 +38,8 @@ static int demo_open(struct inode *inode, struct file *file)
   atomic_inc(&device_opened);
   try_module_get(THIS_MODULE);
   printk(KERN_INFO "Device opened successfully\n");
+  pid_t pid = current->pid;
+  /*subdir_kobj = kobject_create_and_add(*/
   return 0;
 }
 
@@ -179,9 +184,17 @@ int init_module(void)
   atomic_set(&device_opened, 0);
 
   /*sysfs creation*/
-   ret = sysfs_create_group (kernel_kobj, &demodev_attr_group);
+   demodev_kobj = kobject_create_and_add("demodev", kernel_kobj);  
+   BUG_ON(!demodev_kobj);
+   ret = sysfs_create_group (demodev_kobj, &demodev_attr_group);
    if(unlikely(ret))
           printk(KERN_INFO "demodev: can't create sysfs\n");
+ 
+  /*subdir_kobj = kobject_create_and_add("level1", demodev_kobj);*/
+  /*BUG_ON(!subdir_kobj);*/
+  /*ret = sysfs_create_group(subdir_kobj, &demodev_attr_group);*/
+ /*if(unlikely(ret))*/
+        /*printk(KERN_INFO "demodev: can't create sysfs\n");*/
  
   mutex_init(&dev_mutex);
   device_buffer = (char*)kmalloc(MAX_BUF_SIZE, GFP_KERNEL);
