@@ -34,12 +34,154 @@ struct mutex dev_mutex;
 
 struct kobj_list {
   struct kobject *kobj;
+  unsigned current_buf_usage;
+  unsigned total_bytes_read;
+  unsigned total_bytes_written;
   struct list_head list;
 };
 
 struct kobj_list demodev_kobj_list;
 struct kobj_list *tmp;
 struct list_head *pos, *q;
+
+static struct kobj_list* getDemodevKobjProcess(void){
+  cpid = current->pid;
+  snprintf(pid, 10, "%d", (int)cpid);
+  list_for_each_safe(pos, q, &demodev_kobj_list.list){
+    tmp = list_entry(pos, struct kobj_list, list);
+    if(!strcmp(tmp->kobj->name, pid)){
+      return tmp;
+    }
+  }
+  return NULL;
+}
+
+
+static ssize_t subdir_current_usage_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+  tmp = getDemodevKobjProcess();
+  if(!tmp)
+    return sprintf(buf, "%d\n", tmp->current_buf_usage);
+  return sprintf(buf, "%d\n", -1);
+}
+static struct kobj_attribute subdir_current_usage_attribute = __ATTR(current_usage, 0444, subdir_current_usage_show, NULL);
+
+static ssize_t subdir_total_bytes_read_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+  tmp = getDemodevKobjProcess(); 
+  if(!tmp)
+    return sprintf(buf, "%d\n", tmp->total_bytes_read);
+  return sprintf(buf, "%d\n", -1);
+}
+static struct kobj_attribute subdir_total_bytes_read_attribute = __ATTR(total_bytes_read, 0444, subdir_total_bytes_read_show, NULL);
+
+static ssize_t subdir_total_bytes_written_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
+  tmp = getDemodevKobjProcess();
+  if(!tmp)
+    return sprintf(buf, "%d\n", tmp->total_bytes_written);
+  return sprintf(buf, "%d\n", -1);
+}
+static struct kobj_attribute subdir_total_bytes_written_attribute = __ATTR(total_bytes_written, 0444, subdir_total_bytes_written_show, NULL);
+
+static struct attribute *subdir_attrs[] = {
+  &subdir_current_usage_attribute.attr,
+  &subdir_total_bytes_read_attribute.attr,
+  &subdir_total_bytes_written_attribute.attr,
+  NULL
+};
+static struct attribute_group subdir_attr_group = {
+  .attrs = subdir_attrs,
+};
+
+
+static int demo_open(struct inode *inode, struct file *file)
+{
+  int ret;
+  atomic_inc(&device_opened);
+  try_module_get(THIS_MODULE);
+  printk(KERN_INFO "Device opened successfully\n");
+  cpid = current->pid;
+  snprintf(pid, 10, "%d", (int)cpid);
+  subdir_kobj = kobject_create_and_add(pid, demodev_kobj);
+  BUG_ON(!subdir_kobj);
+  // TODO: Fix NULL deference pointer if uncommented following line
+  /*ret = sysfs_create_group (subdir_kobj, &subdir_attr_group);*/
+
+  tmp = (struct kobj_list*)kmalloc(sizeof(struct kobj_list), GFP_KERNEL);
+  tmp->kobj = subdir_kobj;
+  tmp->current_buf_usage = 0;
+  tmp->total_bytes_read = 0;
+  tmp->total_bytes_written = 0;
+  list_add(&(tmp->list), &(demodev_kobj_list.list));
+
+  /*if(unlikely(ret)){*/
+      /*printk(KERN_INFO "demodev: can't create sysfs\n");*/
+      /*BUG_ON(1);*/
+  /*}*/
+  return 0;
+}
+
+
+static int demo_release(struct inode *inode, struct file *file)
+{
+        atomic_dec(&device_opened);
+        module_put(THIS_MODULE);
+        cpid = current->pid;
+        snprintf(pid, 10, "%d", (int)cpid);
+        list_for_each_safe(pos, q, &demodev_kobj_list.list){
+          tmp = list_entry(pos, struct kobj_list, list);
+          if(!strcmp(tmp->kobj->name, pid)){
+                subdir_kobj = tmp->kobj;
+                list_del(pos);
+                kfree(tmp);
+              }
+        }
+        sysfs_remove_group(subdir_kobj, &subdir_attr_group);
+        kobject_del(subdir_kobj);
+        printk(KERN_INFO "Device closed successfully\n");
+        return 0;
+}
+static ssize_t demo_read(struct file *filp,
+                           char *buffer,
+                           size_t length,
+                           loff_t * offset)
+{
+  if(length > current_usage)
+    length = current_usage;
+  mutex_lock_interruptible(&dev_mutex);
+  printk(KERN_INFO "Read!\n");
+  copy_to_user(buffer, device_buffer, length); 
+  mutex_unlock(&dev_mutex);
+  current_usage = 0;
+  /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
+  *offset += length;
+  total_bytes_read += length;
+
+  tmp = getDemodevKobjProcess();
+  tmp->current_buf_usage = 0;
+  tmp->total_bytes_read += length;
+
+  return length;
+}
+
+static ssize_t
+demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
+{
+  if(len > buf_size)
+    len = buf_size;
+  mutex_lock_interruptible(&dev_mutex);
+  printk(KERN_INFO "Write!\n");
+  copy_from_user(device_buffer, buff, len);
+  mutex_unlock(&dev_mutex);
+  current_usage = len;
+  /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
+  *off += len;
+  total_bytes_written += len;
+
+  tmp = getDemodevKobjProcess();
+  tmp->current_buf_usage = len;
+  tmp->total_bytes_written += len;
+
+  return len;
+}
 
 static ssize_t demodev_buf_size_show(struct kobject *kobj,
                                   struct kobj_attribute *attr, char *buf)
@@ -83,6 +225,7 @@ static ssize_t demodev_current_usage_show(struct kobject *kobj, struct kobj_attr
 static struct kobj_attribute demodev_current_usage_attribute = __ATTR(current_usage, 0444, demodev_current_usage_show, NULL);
 
 
+
 static ssize_t demodev_total_bytes_read_show(struct kobject *kobj, struct kobj_attribute *attr, char * buf){
   return sprintf(buf, "%d\n", total_bytes_read);
 }
@@ -107,88 +250,6 @@ static struct attribute_group demodev_attr_group = {
         .attrs = demodev_attrs,
         /*.name = "demodev",*/
 };
-
-
-
-static int demo_open(struct inode *inode, struct file *file)
-{
-  /*if(atomic_read(&device_opened)){*/
-    /*printk(KERN_INFO "Only one process is allowed to open!!\n");*/
-    /*return -EINVAL;*/
-  /*}*/
-  int ret;
-  atomic_inc(&device_opened);
-  try_module_get(THIS_MODULE);
-  printk(KERN_INFO "Device opened successfully\n");
-  cpid = current->pid;
-  snprintf(pid, 10, "%d", (int)cpid);
-  subdir_kobj = kobject_create_and_add(pid, demodev_kobj);
-  BUG_ON(!subdir_kobj);
-  ret = sysfs_create_group (subdir_kobj, &demodev_attr_group);
-
-  tmp = (struct kobj_list*)kmalloc(sizeof(struct kobj_list), GFP_KERNEL);
-  tmp->kobj = subdir_kobj;
-  list_add(&(tmp->list), &(demodev_kobj_list.list));
-
-  if(unlikely(ret)){
-      printk(KERN_INFO "demodev: can't create sysfs\n");
-      BUG_ON(1);
-  }
-  return 0;
-}
-
-static int demo_release(struct inode *inode, struct file *file)
-{
-        atomic_dec(&device_opened);
-        module_put(THIS_MODULE);
-        cpid = current->pid;
-        snprintf(pid, 10, "%d", (int)cpid);
-        list_for_each_safe(pos, q, &demodev_kobj_list.list){
-          tmp = list_entry(pos, struct kobj_list, list);
-          if(!strcmp(tmp->kobj->name, pid)){
-                subdir_kobj = tmp->kobj;
-                list_del(pos);
-                kfree(tmp);
-              }
-        }
-        sysfs_remove_group(subdir_kobj, &demodev_attr_group);
-        kobject_del(subdir_kobj);
-        printk(KERN_INFO "Device closed successfully\n");
-        return 0;
-}
-static ssize_t demo_read(struct file *filp,
-                           char *buffer,
-                           size_t length,
-                           loff_t * offset)
-{
-  if(length > current_usage)
-    length = current_usage;
-  mutex_lock_interruptible(&dev_mutex);
-  printk(KERN_INFO "Read!\n");
-  copy_to_user(buffer, device_buffer, length); 
-  mutex_unlock(&dev_mutex);
-  current_usage = 0;
-  /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
-  *offset += length;
-  total_bytes_read += length;
-  return length;
-}
-
-static ssize_t
-demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
-{
-  if(len > buf_size)
-    len = buf_size;
-  mutex_lock_interruptible(&dev_mutex);
-  printk(KERN_INFO "Write!\n");
-  copy_from_user(device_buffer, buff, len);
-  mutex_unlock(&dev_mutex);
-  current_usage = len;
-  /*printk(KERN_INFO "Sorry, this operation isn't supported.\n");*/
-  *off += len;
-  total_bytes_written += len;
-  return len;
-}
 
 static long demo_ioctl(struct file *file,
                  unsigned int ioctl_num,
