@@ -44,12 +44,10 @@ struct kobj_list demodev_kobj_list;
 struct kobj_list *tmp;
 struct list_head *pos, *q;
 
-static struct kobj_list* getDemodevKobjProcess(void){
-  cpid = current->pid;
-  snprintf(pid, 10, "%d", (int)cpid);
+static struct kobj_list* getDemodevKobjProcess(struct kobject *kobj){
   list_for_each_safe(pos, q, &demodev_kobj_list.list){
     tmp = list_entry(pos, struct kobj_list, list);
-    if(!strcmp(tmp->kobj->name, pid)){
+    if((tmp->kobj) == kobj){
       return tmp;
     }
   }
@@ -58,24 +56,24 @@ static struct kobj_list* getDemodevKobjProcess(void){
 
 
 static ssize_t subdir_current_usage_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
-  tmp = getDemodevKobjProcess();
-  if(!tmp)
+  tmp = getDemodevKobjProcess(kobj);
+  if(tmp)
     return sprintf(buf, "%d\n", tmp->current_buf_usage);
   return sprintf(buf, "%d\n", -1);
 }
 static struct kobj_attribute subdir_current_usage_attribute = __ATTR(current_usage, 0444, subdir_current_usage_show, NULL);
 
 static ssize_t subdir_total_bytes_read_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
-  tmp = getDemodevKobjProcess(); 
-  if(!tmp)
+  tmp = getDemodevKobjProcess(kobj); 
+  if(tmp)
     return sprintf(buf, "%d\n", tmp->total_bytes_read);
   return sprintf(buf, "%d\n", -1);
 }
 static struct kobj_attribute subdir_total_bytes_read_attribute = __ATTR(total_bytes_read, 0444, subdir_total_bytes_read_show, NULL);
 
 static ssize_t subdir_total_bytes_written_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf){
-  tmp = getDemodevKobjProcess();
-  if(!tmp)
+  tmp = getDemodevKobjProcess(kobj);
+  if(tmp)
     return sprintf(buf, "%d\n", tmp->total_bytes_written);
   return sprintf(buf, "%d\n", -1);
 }
@@ -102,8 +100,6 @@ static int demo_open(struct inode *inode, struct file *file)
   snprintf(pid, 10, "%d", (int)cpid);
   subdir_kobj = kobject_create_and_add(pid, demodev_kobj);
   BUG_ON(!subdir_kobj);
-  // TODO: Fix NULL deference pointer if uncommented following line
-  /*ret = sysfs_create_group (subdir_kobj, &subdir_attr_group);*/
 
   tmp = (struct kobj_list*)kmalloc(sizeof(struct kobj_list), GFP_KERNEL);
   tmp->kobj = subdir_kobj;
@@ -112,10 +108,11 @@ static int demo_open(struct inode *inode, struct file *file)
   tmp->total_bytes_written = 0;
   list_add(&(tmp->list), &(demodev_kobj_list.list));
 
-  /*if(unlikely(ret)){*/
-      /*printk(KERN_INFO "demodev: can't create sysfs\n");*/
-      /*BUG_ON(1);*/
-  /*}*/
+  ret = sysfs_create_group (subdir_kobj, &subdir_attr_group);
+  if(unlikely(ret)){
+      printk(KERN_INFO "demodev: can't create sysfs\n");
+      BUG_ON(1);
+  }
   return 0;
 }
 
@@ -139,6 +136,21 @@ static int demo_release(struct inode *inode, struct file *file)
         printk(KERN_INFO "Device closed successfully\n");
         return 0;
 }
+
+static struct kobj_list* getDemodevKobjProcessByName(void){
+  cpid = current->pid;
+  snprintf(pid, 10, "%d", (int)cpid);
+  list_for_each_safe(pos, q, &demodev_kobj_list.list){
+    tmp = list_entry(pos, struct kobj_list, list);
+    if(!strcmp(tmp->kobj->name, pid)){
+      return tmp;
+    }
+  }
+  return NULL;
+}
+
+
+
 static ssize_t demo_read(struct file *filp,
                            char *buffer,
                            size_t length,
@@ -155,7 +167,7 @@ static ssize_t demo_read(struct file *filp,
   *offset += length;
   total_bytes_read += length;
 
-  tmp = getDemodevKobjProcess();
+  tmp = getDemodevKobjProcessByName();
   tmp->current_buf_usage = 0;
   tmp->total_bytes_read += length;
 
@@ -176,7 +188,7 @@ demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
   *off += len;
   total_bytes_written += len;
 
-  tmp = getDemodevKobjProcess();
+  tmp = getDemodevKobjProcessByName();
   tmp->current_buf_usage = len;
   tmp->total_bytes_written += len;
 
@@ -302,9 +314,10 @@ int init_module(void)
 void cleanup_module(void)
 {
   unregister_chrdev(major, DEVNAME);
-  sysfs_remove_group (kernel_kobj, &demodev_attr_group);
+  sysfs_remove_group (demodev_kobj, &demodev_attr_group);
+  kobject_del(demodev_kobj);
   kfree(device_buffer);
-	printk(KERN_INFO "Goodbye kernel\n");
+        printk(KERN_INFO "Goodbye kernel\n");
 }
 MODULE_AUTHOR("deba@cse.iitk.ac.in");
 MODULE_LICENSE("GPL");
