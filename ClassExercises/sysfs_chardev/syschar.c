@@ -13,6 +13,8 @@
 #include<linux/mutex.h>
 #include<linux/list.h>
 
+#include "syschar.h"
+
 #define MAX_BUF_SIZE 8192
 #define DEVNAME "demo"
 
@@ -43,6 +45,9 @@ struct kobj_list {
 struct kobj_list demodev_kobj_list;
 struct kobj_list *tmp;
 struct list_head *pos, *q;
+
+static unsigned readers = 0;
+static unsigned writers = 0;
 
 static struct kobj_list *getDemodevKobjProcess(struct kobject *kobj)
 {
@@ -168,9 +173,13 @@ static ssize_t demo_read(struct file *filp,
 {
 	if (length > current_usage)
 		length = current_usage;
+        if(!readers)
+                return -EINVAL;
+        readers--;  // Not much critical so not using lock
 	mutex_lock_interruptible(&dev_mutex);
 	printk(KERN_INFO "Read!\n");
 	copy_to_user(buffer, device_buffer, length);
+        readers++;
 	mutex_unlock(&dev_mutex);
 	current_usage = 0;
 	/*printk(KERN_INFO "Sorry, this operation isn't supported.\n"); */
@@ -189,9 +198,13 @@ demo_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 {
 	if (len > buf_size)
 		len = buf_size;
+        if(!writers)
+                return -EINVAL;
+        writers--;
 	mutex_lock_interruptible(&dev_mutex);
 	printk(KERN_INFO "Write!\n");
 	copy_from_user(device_buffer, buff, len);
+        writers++;
 	mutex_unlock(&dev_mutex);
 	current_usage = len;
 	/*printk(KERN_INFO "Sorry, this operation isn't supported.\n"); */
@@ -291,8 +304,30 @@ static struct attribute_group demodev_attr_group = {
 static long demo_ioctl(struct file *file,
 		       unsigned int ioctl_num, unsigned long arg)
 {
-	printk(KERN_INFO "Sorry, this operation isn't supported.\n");
-	return -EINVAL;
+        int retval = -EINVAL;
+        switch(ioctl_num){
+                case IOCTL_GET_READERS:
+                        *((unsigned *)(arg)) = readers;
+                        retval = 0;
+                        break;
+                case IOCTL_SET_READERS:
+                        readers = (unsigned int) arg;
+                        printk(KERN_INFO "Readers set to %d\n", readers);
+                        retval = 0;
+                        break;
+                case IOCTL_GET_WRITERS:
+                        *((unsigned *)(arg)) = writers;
+                        retval = 0;
+                        break;
+                case IOCTL_SET_WRITERS:
+                        writers = (unsigned int) arg;
+                        printk(KERN_INFO "Writers set to %d\n", writers);
+                        retval = 0;
+                        break;
+                default:
+                        printk(KERN_INFO "Sorry, this operation is not supported!\n");
+        }
+	return retval;
 }
 
 static struct file_operations fops = {
@@ -307,15 +342,15 @@ int init_module(void)
 {
 	int ret;
 	printk(KERN_INFO "Hello kernel\n");
-	major = register_chrdev(0, DEVNAME, &fops);
+        major = register_chrdev(DEV_MAJOR, DEVNAME, &fops);
 	if (major < 0) {
 		printk(KERN_ALERT "Registering char device failed with %d\n",
 		       major);
 		return major;
 	}
 
-	printk(KERN_INFO "I was assigned major number %d. To talk to\n", major);
-	printk(KERN_INFO "'mknod /dev/%s c %d 0'.\n", DEVNAME, major);
+	printk(KERN_INFO "I was assigned major number %d. To talk to\n", DEV_MAJOR);
+	printk(KERN_INFO "'mknod /dev/%s c %d 0'.\n", DEVNAME, DEV_MAJOR);
 	atomic_set(&device_opened, 0);
 
 	/*sysfs creation */
@@ -335,7 +370,7 @@ int init_module(void)
 
 void cleanup_module(void)
 {
-	unregister_chrdev(major, DEVNAME);
+	unregister_chrdev(DEV_MAJOR, DEVNAME);
 	sysfs_remove_group(demodev_kobj, &demodev_attr_group);
 	kobject_del(demodev_kobj);
 	kfree(device_buffer);
