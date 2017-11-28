@@ -1005,9 +1005,17 @@ out:
  *
  * This function returns 0 if the pages were merged, -EFAULT otherwise.
  */
+
+int (*custom_try_to_merge_one_page)(void) = NULL;
+EXPORT_SYMBOL(custom_try_to_merge_one_page);
+
 static int try_to_merge_one_page(struct vm_area_struct *vma,
 				 struct page *page, struct page *kpage)
 {
+  
+  if (kpage != NULL && custom_try_to_merge_one_page != NULL &&  custom_try_to_merge_one_page() == 1)
+    kpage = NULL;
+
 	pte_t orig_pte = __pte(0);
 	int err = -EFAULT;
 
@@ -1074,6 +1082,9 @@ out:
 	return err;
 }
 
+int (*custom_try_to_merge_with_ksm_page)(void) = NULL;
+EXPORT_SYMBOL(custom_try_to_merge_with_ksm_page);
+
 /*
  * try_to_merge_with_ksm_page - like try_to_merge_two_pages,
  * but no new kernel page is allocated: kpage must already be a ksm page.
@@ -1083,6 +1094,10 @@ out:
 static int try_to_merge_with_ksm_page(struct rmap_item *rmap_item,
 				      struct page *page, struct page *kpage)
 {
+
+ if(custom_try_to_merge_with_ksm_page!= NULL && custom_try_to_merge_with_ksm_page())
+     return -EFAULT;
+
 	struct mm_struct *mm = rmap_item->mm;
 	struct vm_area_struct *vma;
 	int err = -EFAULT;
