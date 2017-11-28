@@ -427,6 +427,8 @@ static int break_ksm(struct vm_area_struct *vma, unsigned long addr)
 	return (ret & VM_FAULT_OOM) ? -ENOMEM : 0;
 }
 
+EXPORT_SYMBOL(break_ksm);
+
 static struct vm_area_struct *find_mergeable_vma(struct mm_struct *mm,
 		unsigned long addr)
 {
@@ -1082,7 +1084,7 @@ out:
 	return err;
 }
 
-int (*custom_try_to_merge_with_ksm_page)(void) = NULL;
+int (*custom_try_to_merge_with_ksm_page)(struct rmap_item *rmap_item, struct page *page, struct page *kpage) = NULL;
 EXPORT_SYMBOL(custom_try_to_merge_with_ksm_page);
 
 /*
@@ -1095,7 +1097,7 @@ static int try_to_merge_with_ksm_page(struct rmap_item *rmap_item,
 				      struct page *page, struct page *kpage)
 {
 
- if(custom_try_to_merge_with_ksm_page!= NULL && custom_try_to_merge_with_ksm_page())
+ if(custom_try_to_merge_with_ksm_page!= NULL && custom_try_to_merge_with_ksm_page(rmap_item, page, kpage))
      return -EFAULT;
 
 	struct mm_struct *mm = rmap_item->mm;
